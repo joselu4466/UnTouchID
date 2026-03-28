@@ -34,17 +34,17 @@
 
 ### The Problem
 
-Apple keeps shipping Macs without Touch ID.
+Apple charges extra for Touch ID on every Mac that has it.
 
-**Mac Mini, Mac Studio, Mac Pro** — no fingerprint sensor. The new **MacBook Neo** (ultra-thin) — rumored to drop Touch ID for thinness. Even some **iMacs** ship without a Touch ID keyboard.
+**Mac Mini, Mac Studio, Mac Pro** — no fingerprint sensor at all. The **MacBook Neo base version** — Apple's thinnest laptop — ships without Touch ID. **iMac?** Touch ID only if you pay for the upgraded keyboard.
 
-Every time you run `sudo`, install software, or unlock your screen — you type your password. Again. And again.
+Every time you run `sudo`, install an app, or unlock your screen — you type your password. Over and over. All day.
 
-Apple's solution? Buy a [Magic Keyboard with Touch ID for $199](https://www.apple.com/shop/product/MK293LL/A). It only works wired. And if you're at a coffee shop with your MacBook Neo? Too bad.
+Apple's fix? Pay more. A [$199+ Magic Keyboard with Touch ID](https://www.apple.com/shop/product/MK293LL/A). Or buy the higher-spec MacBook Neo that includes it. Or upgrade to the pricier iMac keyboard variant. Either way, you're paying a premium for a fingerprint sensor that your phone already has.
 
 ### The Solution
 
-**TouchBridge uses your phone's fingerprint or face to authenticate on your Mac.** Free. Open source. Works in 60 seconds. No extra hardware to buy or carry.
+**TouchBridge fixes this — for free.** Use the fingerprint or face sensor already in your pocket. iPhone, Android, Apple Watch, or any phone with a browser. No extra hardware. No premium upgrade. No cloud. No subscription.
 
 ```
 $ sudo echo hello
