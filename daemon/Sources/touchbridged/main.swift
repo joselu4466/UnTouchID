@@ -7,7 +7,7 @@ struct TouchBridgeDaemon: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "touchbridged",
         abstract: "TouchBridge daemon — delegates macOS auth to a companion iOS device.",
-        version: "0.1.0-dev",
+        version: "1.0.0",
         subcommands: [Serve.self]
     )
 }
@@ -48,7 +48,7 @@ struct Serve: ParsableCommand {
     private func runSimulatorMode() throws {
         let mode: SimulatorAuthHandler.Mode = interactive ? .interactive : .autoApprove
 
-        print("touchbridged v0.1.0-dev (SIMULATOR MODE: \(mode.rawValue))")
+        print("touchbridged v1.0.0 (SIMULATOR MODE: \(mode.rawValue))")
         print("")
         print("  No iPhone required. Auth requests will be handled locally.")
         print("  This mode is for testing only — not for production use.")
@@ -78,7 +78,7 @@ struct Serve: ParsableCommand {
     }
 
     private func runWebMode() throws {
-        print("touchbridged v0.1.0-dev (WEB COMPANION MODE)")
+        print("touchbridged v1.0.0 (WEB COMPANION MODE)")
         print("")
         print("  No iPhone app required.")
         print("  Auth requests will show a URL — open it on any phone to approve.")
@@ -119,7 +119,7 @@ struct Serve: ParsableCommand {
     }
 
     private func runNormalMode() throws {
-        print("touchbridged v0.1.0-dev starting...")
+        print("touchbridged v1.0.0 starting...")
 
         let policyEngine = PolicyEngine()
         let coordinator = DaemonCoordinator(rssiThreshold: rssiThreshold)
