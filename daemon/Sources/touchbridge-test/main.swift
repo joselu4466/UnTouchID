@@ -8,7 +8,7 @@ struct TouchBridgeTest: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "touchbridge-test",
         abstract: "CLI test harness for TouchBridge challenge-response flow.",
-        version: "0.1.0-dev",
+        version: "1.0.0",
         subcommands: [PairCommand.self, ChallengeCommand.self, ListDevicesCommand.self, ConfigCommand.self, LogsCommand.self]
     )
 }

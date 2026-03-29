@@ -56,7 +56,7 @@ public class BLEClient: NSObject {
 
     private var centralManager: CBCentralManager!
 
-    /// Currently connected peripheral (one at a time for Phase 0).
+    /// Currently connected peripheral (one at a time).
     private var connectedPeripheral: CBPeripheral?
 
     /// Discovered peripherals keyed by UUID.

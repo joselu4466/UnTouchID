@@ -172,7 +172,7 @@ public final class SessionCryptoWrapper: @unchecked Sendable {
     }
 }
 
-/// Local copies of message types for the companion app (avoids cross-package dependency for Phase 0).
+/// Local copies of message types for the companion app (avoids cross-package dependency).
 struct ChallengeIssuedMessageCompanion: Codable {
     let challengeID: String
     let encryptedNonce: Data

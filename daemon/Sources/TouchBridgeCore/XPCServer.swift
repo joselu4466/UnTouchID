@@ -1,4 +1,5 @@
 import Foundation
 
-// XPC server — Phase 1 placeholder.
-// Will accept auth requests from the PAM module.
+// XPC server — not used.
+// PAM module communicates via Unix domain socket (SocketServer.swift).
+// This file kept for potential future XPC-based integrations.
