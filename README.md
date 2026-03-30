@@ -32,7 +32,7 @@
 
 Apple charges extra for Touch ID on every Mac that has it.
 
-**Mac Mini, Mac Studio, Mac Pro** — no fingerprint sensor at all. The **MacBook Neo** — Apple's thinnest laptop — ships without Touch ID on the base model (the $100 more expensive version adds it back). **iMac?** Touch ID only if you pay for the upgraded keyboard.
+**Mac Mini, Mac Studio, Mac Pro** — no fingerprint sensor at all. The **MacBook Neo** — Apple's newest MacBook — ships without Touch ID on the base model (pay $100 more for the version that adds it back). **iMac?** Touch ID only if you pay for the upgraded keyboard.
 
 Every time you run `sudo`, install an app, or unlock your screen — you type your password. Over and over. All day.
 
@@ -294,7 +294,7 @@ Any Mac running **macOS 13+** (Ventura or later):
 
 ### The MacBook Neo story
 
-Apple launched the MacBook Neo — their thinnest laptop ever. The base model ships without Touch ID. Want it? Pay $100 more for the higher-end version. Same pattern as always — Apple charges extra for biometric auth.
+Apple launched the MacBook Neo — their newest MacBook. The base model ships without Touch ID. Want it? Pay $100 more for the higher-end version. Same pattern as always — Apple charges extra for biometric auth.
 
 Millions of base-model MacBook Neo users now have no fingerprint sensor. They can't carry a Magic Keyboard to a coffee shop. Apple Watch only handles sleep/wake. **TouchBridge is the answer** — your phone is already in your pocket. For free.
 
