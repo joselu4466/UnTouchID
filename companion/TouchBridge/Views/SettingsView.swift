@@ -6,6 +6,23 @@ struct SettingsView: View {
 
     var body: some View {
         List {
+            if appState.keyInvalidated {
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Re-pair required")
+                                .font(.subheadline.bold())
+                            Text("Your Face ID / Touch ID enrollment changed since pairing. Unpair and pair again to restore authentication.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
             Section("Connection") {
                 LabeledContent("Status") {
                     HStack(spacing: 6) {

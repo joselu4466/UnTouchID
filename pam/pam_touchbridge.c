@@ -242,8 +242,26 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
         ret = PAM_SUCCESS;
     } else {
         syslog(LOG_AUTH | LOG_INFO,
-            "pam_touchbridge: authentication failed for user=%s", user);
-        pam_notify(pamh, "TouchBridge: ✗ denied — falling through to password");
+            "pam_touchbridge: authentication failed for user=%s service=%s reason=%s",
+            user, service, response);
+
+        /*
+         * Show a reason-specific message so the user knows what happened
+         * and what to do, rather than a generic "denied" for all failures.
+         */
+        if (strstr(response, "\"key_invalidated\"") != NULL) {
+            pam_notify(pamh,
+                "TouchBridge: ✗ signing key invalid — open TouchBridge on your "
+                "phone and re-pair (Settings → Unpair → Pair)");
+        } else if (strstr(response, "\"invalid_signature\"") != NULL) {
+            pam_notify(pamh,
+                "TouchBridge: ✗ signature verification failed — try again or re-pair");
+        } else if (strstr(response, "\"challenge_expired\"") != NULL) {
+            pam_notify(pamh,
+                "TouchBridge: ✗ request timed out on phone — try again");
+        } else {
+            pam_notify(pamh, "TouchBridge: ✗ denied — falling through to password");
+        }
         ret = PAM_AUTH_ERR;
     }
 

@@ -24,7 +24,8 @@ public final class CompanionCoordinator: NSObject, @unchecked Sendable {
     // Callbacks
     public var onConnectionChanged: ((Bool) -> Void)?
     public var onChallengeReceived: ((String) -> Void)?
-    public var onChallengeResult: ((String, Bool) -> Void)?
+    /// Called when a challenge completes. Parameters: challengeID, success, errorCode (nil on success).
+    public var onChallengeResult: ((String, Bool, ChallengeHandlerError?) -> Void)?
     public var onPairingComplete: ((String) -> Void)?
 
     /// Signing key tag in Keychain/Secure Enclave.
@@ -218,10 +219,10 @@ extension CompanionCoordinator: BLEClientDelegate {
             switch result {
             case .success(let challengeID):
                 logger.info("Challenge \(challengeID) approved")
-                self.onChallengeResult?(challengeID, true)
+                self.onChallengeResult?(challengeID, true, nil)
             case .failed(let error):
                 logger.warning("Challenge failed: \(error)")
-                self.onChallengeResult?("", false)
+                self.onChallengeResult?("", false, error)
             }
         }
     }

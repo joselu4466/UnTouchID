@@ -185,6 +185,7 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
         case .invalidSignature: reason = "invalid_signature"
         case .replayDetected: reason = "replay_detected"
         case .unknownChallenge: reason = "challenge_failed"
+        case .keyInvalidated: reason = "key_invalidated"
         case nil: reason = "timeout"
         case .verified: reason = "unknown" // unreachable
         }
@@ -295,7 +296,29 @@ extension DaemonCoordinator: BLEServerDelegate {
 
         Task {
             do {
-                let (_, payload) = try WireFormat.decode(data: data)
+                let (msgType, payload) = try WireFormat.decode(data: data)
+
+                // Handle companion error messages (e.g. key invalidated).
+                if msgType == .error {
+                    let errMsg = try WireFormat.decodePayload(ErrorMessage.self, from: payload)
+                    logger.warning("Companion error \(errMsg.code): \(errMsg.description)")
+
+                    if errMsg.code == ErrorCode.keyInvalidated.rawValue,
+                       let cidStr = errMsg.challengeID,
+                       let challengeID = UUID(uuidString: cidStr) {
+                        if let continuation = pendingAuthentications.removeValue(forKey: challengeID) {
+                            continuation.resume(returning: .keyInvalidated)
+                        }
+                        await auditLog.log(AuditEntry(
+                            sessionID: cidStr,
+                            surface: "challenge",
+                            deviceID: errMsg.description,
+                            result: "FAILED_KEY_INVALIDATED"
+                        ))
+                    }
+                    return
+                }
+
                 let response = try WireFormat.decodePayload(ChallengeResponseMessage.self, from: payload)
 
                 guard let challengeID = UUID(uuidString: response.challengeID) else {
@@ -321,6 +344,7 @@ extension DaemonCoordinator: BLEServerDelegate {
                 case .invalidSignature: resultString = "FAILED_SIGNATURE"
                 case .replayDetected: resultString = "FAILED_REPLAY"
                 case .unknownChallenge: resultString = "FAILED_SIGNATURE"
+                case .keyInvalidated: resultString = "FAILED_KEY_INVALIDATED"
                 }
 
                 await auditLog.log(AuditEntry(

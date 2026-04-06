@@ -226,6 +226,11 @@ struct ChallengeCommand: ParsableCommand {
             print("\nFAILED")
             print("Unknown challenge ID in response.")
             throw ExitCode.failure
+        case .keyInvalidated:
+            print("\nFAILED_KEY_INVALIDATED")
+            print("Signing key was invalidated — biometric enrollment changed on the companion device.")
+            print("Re-pair: touchbridge-test pair")
+            throw ExitCode.failure
         }
     }
 }
