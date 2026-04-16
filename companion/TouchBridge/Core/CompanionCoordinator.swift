@@ -57,6 +57,13 @@ public final class CompanionCoordinator: NSObject, @unchecked Sendable {
 
         bleClient.delegate = self
 
+        // If already paired, scan only for the paired Mac's unique service UUID.
+        // This prevents connecting to other people's TouchBridge Macs nearby.
+        if let storedUUID = UserDefaults.standard.string(forKey: "pairedMacID"),
+           !storedUUID.isEmpty {
+            bleClient.serviceUUID = storedUUID
+        }
+
         // Wire challenge handler's send callback to BLE
         challengeHandler.sendResponse = { [weak self] data in
             self?.bleClient.sendResponse(data) ?? false

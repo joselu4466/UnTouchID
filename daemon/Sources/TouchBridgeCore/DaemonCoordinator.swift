@@ -13,7 +13,7 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
     private let logger = Logger(subsystem: "dev.touchbridge", category: "Coordinator")
 
     // Components
-    public let bleServer: BLEServer
+    public let bleServer: any BLEServerInterface
     public let challengeManager: ChallengeManager
     public let pairingManager: PairingManager
     public let keychainStore: KeychainStore
@@ -23,7 +23,9 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
     private var sessions: [UUID: SessionState] = [:]
 
     /// Pending PAM authentications awaiting challenge results.
-    private var pendingAuthentications: [UUID: CheckedContinuation<ChallengeResult, Never>] = [:]
+    /// Each auth broadcast stores the same OnceContinuation under multiple challenge IDs
+    /// (one per device), so the first valid response wins and subsequent responses are no-ops.
+    private var pendingAuthentications: [UUID: OnceContinuation] = [:]
 
     /// Callback invoked when a challenge is verified or fails.
     public var onChallengeResult: ((UUID, ChallengeResult, String?) -> Void)?
@@ -43,12 +45,13 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
         challengeManager: ChallengeManager = ChallengeManager(),
         pairingManager: PairingManager? = nil,
         rssiThreshold: Int = TouchBridgeConstants.defaultRSSIThreshold,
-        serviceUUID: String = TouchBridgeConstants.serviceUUID
+        serviceUUID: String = TouchBridgeConstants.serviceUUID,
+        bleServer: (any BLEServerInterface)? = nil
     ) {
         self.keychainStore = keychainStore
         self.auditLog = auditLog
         self.challengeManager = challengeManager
-        self.bleServer = BLEServer(rssiThreshold: rssiThreshold, serviceUUID: serviceUUID)
+        self.bleServer = bleServer ?? BLEServer(rssiThreshold: rssiThreshold, serviceUUID: serviceUUID)
 
         let pm = pairingManager ?? PairingManager(keychainStore: keychainStore, serviceUUID: serviceUUID)
         self.pairingManager = pm
@@ -157,38 +160,39 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
 
         logger.info("PAM auth: broadcasting challenge to \(targets.count) device(s)")
 
-        // Issue challenges to all identified devices and race for the first valid response.
-        // Each challengeID maps to the same continuation — first response wins, subsequent
-        // responses find their entry already removed from pendingAuthentications (no-op).
-        let result: ChallengeResult? = await withTaskGroup(of: ChallengeResult?.self) { group in
-            group.addTask {
-                await withCheckedContinuation { (continuation: CheckedContinuation<ChallengeResult, Never>) in
-                    Task {
-                        var issued = 0
-                        for centralID in targets {
-                            if let challengeID = await self.issueChallenge(to: centralID, reason: service) {
-                                self.pendingAuthentications[challengeID] = continuation
-                                issued += 1
-                            }
-                        }
-                        // If every issueChallenge call failed (BLE queue full, etc.) fail immediately.
-                        if issued == 0 {
-                            continuation.resume(returning: .unknownChallenge)
-                        }
-                        // Otherwise: wait — the first device response resumes the continuation.
+        // Race: first device response OR global timeout — whichever fires first wins.
+        //
+        // We use a single withCheckedContinuation + two unstructured Tasks (challenge dispatch
+        // and timeout) rather than withTaskGroup, because withTaskGroup waits for ALL child
+        // tasks to finish after the closure returns. That means if the timeout fires first,
+        // the group would hang indefinitely waiting for the challenge-dispatch task to return
+        // — which it never does because withCheckedContinuation only returns when resumed.
+        //
+        // With two unstructured Tasks sharing one OnceContinuation, the first resume wins;
+        // subsequent resumes (from late responses or cleanup) are silent no-ops.
+        let result: ChallengeResult? = await withCheckedContinuation { outer in
+            let wrapped = OnceContinuation(outer)
+
+            // Challenge-dispatch task: issue to all identified devices, then just wait.
+            Task {
+                var issued = 0
+                for centralID in targets {
+                    if let challengeID = await self.issueChallenge(to: centralID, reason: service) {
+                        self.pendingAuthentications[challengeID] = wrapped
+                        issued += 1
                     }
                 }
+                if issued == 0 {
+                    wrapped.resume(returning: .unknownChallenge)
+                }
+                // Otherwise: wait — the first device response (or timeout below) resumes outer.
             }
 
-            group.addTask {
-                // Global timeout covers the entire broadcast, not per-device.
+            // Timeout task: resumes with nil after the deadline.
+            Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return nil
+                wrapped.resume(returning: nil)
             }
-
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
         }
 
         if let result, result == .verified {
@@ -219,17 +223,17 @@ public final class DaemonCoordinator: NSObject, PAMAuthHandler, @unchecked Senda
 
 extension DaemonCoordinator: BLEServerDelegate {
 
-    public func bleServer(_ server: BLEServer, centralDidConnect centralID: UUID) {
+    public func bleServer(_ server: any BLEServerInterface, centralDidConnect centralID: UUID) {
         logger.info("Central connected: \(centralID)")
         sessions[centralID] = SessionState()
     }
 
-    public func bleServer(_ server: BLEServer, centralDidDisconnect centralID: UUID) {
+    public func bleServer(_ server: any BLEServerInterface, centralDidDisconnect centralID: UUID) {
         logger.info("Central disconnected: \(centralID)")
         sessions.removeValue(forKey: centralID)
     }
 
-    public func bleServer(_ server: BLEServer, didReceiveSessionKey data: Data, from centralID: UUID) -> Data? {
+    public func bleServer(_ server: any BLEServerInterface, didReceiveSessionKey data: Data, from centralID: UUID) -> Data? {
         logger.info("Received session key from \(centralID)")
 
         do {
@@ -255,11 +259,20 @@ extension DaemonCoordinator: BLEServerDelegate {
         }
     }
 
-    public func bleServer(_ server: BLEServer, didReceivePairingData data: Data, from centralID: UUID) {
+    public func bleServer(_ server: any BLEServerInterface, didReceivePairingData data: Data, from centralID: UUID) {
         logger.info("Received pairing data from \(centralID)")
 
         Task {
             do {
+                // Detect wire-format messages (version=1, valid type byte) vs legacy raw-JSON pairing.
+                // Identify messages always use wire format; pairing requests use raw JSON currently.
+                if data.count >= 2, data[data.startIndex] == 1,
+                   let msgType = MessageType(rawValue: data[data.startIndex + 1]),
+                   msgType == .identify {
+                    try await handleIdentify(data: data, from: centralID)
+                    return
+                }
+
                 let (_, payload) = try WireFormat.decode(data: data)
                 let request = try WireFormat.decodePayload(PairRequestMessage.self, from: payload)
 
@@ -307,7 +320,7 @@ extension DaemonCoordinator: BLEServerDelegate {
         }
     }
 
-    public func bleServer(_ server: BLEServer, didReceiveResponse data: Data, from centralID: UUID) {
+    public func bleServer(_ server: any BLEServerInterface, didReceiveResponse data: Data, from centralID: UUID) {
         logger.info("Received challenge response from \(centralID)")
 
         Task {
@@ -315,22 +328,30 @@ extension DaemonCoordinator: BLEServerDelegate {
                 let (msgType, payload) = try WireFormat.decode(data: data)
 
                 // Handle companion error messages (e.g. key invalidated).
+                // The error payload is AES-GCM encrypted with the session key.
                 if msgType == .error {
-                    let errMsg = try WireFormat.decodePayload(ErrorMessage.self, from: payload)
+                    guard let crypto = sessions[centralID]?.sessionCrypto else {
+                        logger.warning("Error message from \(centralID) but no session crypto — ignoring")
+                        return
+                    }
+                    let plaintext = try crypto.decrypt(ciphertext: payload)
+                    let errMsg = try WireFormat.decodePayload(ErrorMessage.self, from: plaintext)
                     logger.warning("Companion error \(errMsg.code): \(errMsg.description)")
 
                     if errMsg.code == ErrorCode.keyInvalidated.rawValue,
                        let cidStr = errMsg.challengeID,
                        let challengeID = UUID(uuidString: cidStr) {
-                        if let continuation = pendingAuthentications.removeValue(forKey: challengeID) {
-                            continuation.resume(returning: .keyInvalidated)
-                        }
+                        // Log before resuming so callers that await the result immediately
+                        // and then read the audit log always see the entry.
                         await auditLog.log(AuditEntry(
                             sessionID: cidStr,
                             surface: "challenge",
                             deviceID: errMsg.description,
                             result: "FAILED_KEY_INVALIDATED"
                         ))
+                        if let continuation = pendingAuthentications.removeValue(forKey: challengeID) {
+                            continuation.resume(returning: .keyInvalidated)
+                        }
                     }
                     return
                 }
@@ -426,5 +447,32 @@ extension DaemonCoordinator: BLEServerDelegate {
             deviceID: msg.deviceID,
             result: "IDENTIFIED"
         ))
+    }
+}
+
+// MARK: - OnceContinuation
+
+/// Wraps a `CheckedContinuation` so it can safely be resumed at most once.
+///
+/// `authenticateFromPAM` stores the same `OnceContinuation` under every challenge ID
+/// it broadcasts. The first resume (from a device response or the timeout Task) wins;
+/// all subsequent calls are silent no-ops.
+///
+/// Holds `ChallengeResult?` so the timeout Task can pass `nil` ("no result = timeout")
+/// while device-response tasks pass a concrete `ChallengeResult`.
+final class OnceContinuation: @unchecked Sendable {
+    private var inner: CheckedContinuation<ChallengeResult?, Never>?
+    private let lock = NSLock()
+
+    init(_ continuation: CheckedContinuation<ChallengeResult?, Never>) {
+        self.inner = continuation
+    }
+
+    func resume(returning value: ChallengeResult?) {
+        lock.withLock {
+            guard let c = inner else { return }
+            inner = nil
+            c.resume(returning: value)
+        }
     }
 }

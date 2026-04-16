@@ -19,7 +19,12 @@ public struct WireFormat: Sendable {
     private static let headerSize = 2 // version + type
 
     public static func encode<T: Encodable>(_ type: MessageType, _ message: T) throws -> Data {
-        let payload = try JSONEncoder().encode(message)
+        let encoder = JSONEncoder()
+        // Prevent forward-slash escaping (/ → \/) in base64-encoded Data fields.
+        // Without this, binary data that encodes to many '/' chars in base64 can
+        // push the JSON over the 256-byte BLE packet limit.
+        encoder.outputFormatting = .withoutEscapingSlashes
+        let payload = try encoder.encode(message)
         let totalSize = headerSize + payload.count
         guard totalSize <= TouchBridgeConstants.maxMessageSize else {
             throw WireFormatError.messageTooLarge(totalSize)
