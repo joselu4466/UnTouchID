@@ -44,21 +44,28 @@ public final class ChallengeHandler: @unchecked Sendable {
             return .failed(.noSession)
         }
 
-        let decryptedPayload: Data
-        do {
-            decryptedPayload = try session.decrypt(ciphertext: encryptedData)
-        } catch {
-            logger.error("Failed to decrypt challenge: \(error.localizedDescription)")
-            return .failed(.decryptionFailed)
+        // 2. Parse — the challenge arrives as wire format [version, type] + plain JSON.
+        // Strip the 2-byte header before JSON-decoding. The nonce inside is separately encrypted.
+        guard encryptedData.count > 2 else {
+            logger.error("Challenge data too short: \(encryptedData.count) bytes")
+            return .failed(.parseFailed)
         }
-
-        // 2. Parse
+        let jsonPayload = encryptedData.dropFirst(2)
         let challengeMsg: ChallengeIssuedMessageCompanion
         do {
-            challengeMsg = try JSONDecoder().decode(ChallengeIssuedMessageCompanion.self, from: decryptedPayload)
+            challengeMsg = try JSONDecoder().decode(ChallengeIssuedMessageCompanion.self, from: jsonPayload)
         } catch {
             logger.error("Failed to parse challenge: \(error.localizedDescription)")
             return .failed(.parseFailed)
+        }
+
+        // Decrypt the nonce — only the nonce field is AES-GCM encrypted, not the whole message.
+        let decryptedNonce: Data
+        do {
+            decryptedNonce = try session.decrypt(ciphertext: challengeMsg.encryptedNonce)
+        } catch {
+            logger.error("Failed to decrypt nonce: \(error.localizedDescription)")
+            return .failed(.decryptionFailed)
         }
 
         // Check expiry
@@ -81,10 +88,10 @@ public final class ChallengeHandler: @unchecked Sendable {
             return .failed(.biometricDenied)
         }
 
-        // 4. Sign nonce
+        // 4. Sign the decrypted nonce — daemon verifies against the plaintext nonce it stored.
         let signature: Data
         do {
-            signature = try signingProvider.sign(data: challengeMsg.encryptedNonce, keyTag: signingKeyTag)
+            signature = try signingProvider.sign(data: decryptedNonce, keyTag: signingKeyTag)
         } catch SecureEnclaveError.keyInvalidated {
             logger.error("Signing key invalidated — biometric enrollment changed since pairing")
             // Notify the Mac immediately so it fails fast instead of waiting for timeout.
@@ -102,10 +109,13 @@ public final class ChallengeHandler: @unchecked Sendable {
             deviceID: deviceID
         )
 
-        // 6. Encode
+        // 6. Encode — daemon expects wire format: [version=1][type=4(challengeResponse)] + JSON
         let responseData: Data
         do {
-            responseData = try JSONEncoder().encode(response)
+            let jsonData = try JSONEncoder().encode(response)
+            var wire = Data([1, 4]) // protocolVersion=1, MessageType.challengeResponse=4
+            wire.append(jsonData)
+            responseData = wire
         } catch {
             logger.error("Failed to encode response: \(error.localizedDescription)")
             return .failed(.encodingFailed)

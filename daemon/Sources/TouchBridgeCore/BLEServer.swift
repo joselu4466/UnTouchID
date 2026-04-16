@@ -4,24 +4,53 @@ import CryptoKit
 import OSLog
 import TouchBridgeProtocol
 
+// MARK: - BLE Server Interface
+
+/// Abstraction over the BLE peripheral server.
+///
+/// Extracted as a protocol so tests can inject a `MockBLEServer` without
+/// requiring CoreBluetooth or real Bluetooth hardware.
+public protocol BLEServerInterface: AnyObject {
+    /// The delegate that receives BLE events.
+    var delegate: BLEServerDelegate? { get set }
+
+    func startAdvertising()
+    func stopAdvertising()
+
+    /// Send an encrypted challenge to a connected companion. Returns true if sent.
+    @discardableResult func sendChallenge(_ data: Data, to centralID: UUID) -> Bool
+
+    /// Send pairing data to a connected companion. Returns true if sent.
+    @discardableResult func sendPairingData(_ data: Data, to centralID: UUID) -> Bool
+
+    /// Send session key data to a connected companion. Returns true if sent.
+    @discardableResult func sendSessionKey(_ data: Data, to centralID: UUID) -> Bool
+
+    /// UUIDs of currently connected centrals.
+    var connectedCentralIDs: [UUID] { get }
+
+    /// Rolling-average RSSI for a connected central, or nil if unavailable.
+    func averageRSSI(for centralID: UUID) -> Int?
+}
+
 // MARK: - Delegate Protocol
 
 /// Events emitted by the BLE GATT server to the daemon coordinator.
 public protocol BLEServerDelegate: AnyObject {
     /// A companion device connected.
-    func bleServer(_ server: BLEServer, centralDidConnect centralID: UUID)
+    func bleServer(_ server: any BLEServerInterface, centralDidConnect centralID: UUID)
 
     /// A companion device disconnected.
-    func bleServer(_ server: BLEServer, centralDidDisconnect centralID: UUID)
+    func bleServer(_ server: any BLEServerInterface, centralDidDisconnect centralID: UUID)
 
     /// ECDH session key received from companion; returns our public key bytes to send back.
-    func bleServer(_ server: BLEServer, didReceiveSessionKey data: Data, from centralID: UUID) -> Data?
+    func bleServer(_ server: any BLEServerInterface, didReceiveSessionKey data: Data, from centralID: UUID) -> Data?
 
     /// Pairing data received from companion.
-    func bleServer(_ server: BLEServer, didReceivePairingData data: Data, from centralID: UUID)
+    func bleServer(_ server: any BLEServerInterface, didReceivePairingData data: Data, from centralID: UUID)
 
     /// Signed challenge response received from companion.
-    func bleServer(_ server: BLEServer, didReceiveResponse data: Data, from centralID: UUID)
+    func bleServer(_ server: any BLEServerInterface, didReceiveResponse data: Data, from centralID: UUID)
 }
 
 // MARK: - Connected Central Tracking
@@ -58,7 +87,7 @@ struct ConnectedCentral {
 /// - Challenge delivery (Mac → iPhone via notify)
 /// - Response reception (iPhone → Mac via write)
 /// - Pairing flow (bidirectional)
-public class BLEServer: NSObject {
+public class BLEServer: NSObject, BLEServerInterface {
     private let logger = Logger(subsystem: "dev.touchbridge", category: "BLEServer")
 
     private var peripheralManager: CBPeripheralManager!
