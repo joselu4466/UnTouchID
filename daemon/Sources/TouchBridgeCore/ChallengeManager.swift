@@ -9,6 +9,8 @@ public enum ChallengeResult: Sendable, Equatable {
     case invalidSignature
     case replayDetected
     case unknownChallenge
+    /// Companion reported its Secure Enclave key was invalidated (biometric enrollment changed).
+    case keyInvalidated
 }
 
 /// A pending challenge awaiting a signed response.

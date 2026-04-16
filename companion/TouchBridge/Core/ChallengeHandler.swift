@@ -85,6 +85,11 @@ public final class ChallengeHandler: @unchecked Sendable {
         let signature: Data
         do {
             signature = try signingProvider.sign(data: challengeMsg.encryptedNonce, keyTag: signingKeyTag)
+        } catch SecureEnclaveError.keyInvalidated {
+            logger.error("Signing key invalidated — biometric enrollment changed since pairing")
+            // Notify the Mac immediately so it fails fast instead of waiting for timeout.
+            sendKeyInvalidatedError(challengeID: challengeMsg.challengeID, deviceID: deviceID, session: session)
+            return .failed(.keyInvalidated)
         } catch {
             logger.error("Signing failed: \(error.localizedDescription)")
             return .failed(.signingFailed)
@@ -137,6 +142,7 @@ public enum ChallengeHandlerError: Sendable, CustomStringConvertible {
         case .expired: return "expired"
         case .biometricDenied: return "biometric_denied"
         case .signingFailed: return "signing_failed"
+        case .keyInvalidated: return "key_invalidated"
         case .encodingFailed: return "encoding_failed"
         case .sendFailed: return "send_failed"
         }
@@ -148,6 +154,8 @@ public enum ChallengeHandlerError: Sendable, CustomStringConvertible {
     case expired
     case biometricDenied
     case signingFailed
+    /// Secure Enclave key was invalidated — biometric enrollment changed. User must re-pair.
+    case keyInvalidated
     case encodingFailed
     case sendFailed
 }
@@ -169,6 +177,49 @@ public final class SessionCryptoWrapper: @unchecked Sendable {
 
     public func decrypt(ciphertext: Data) throws -> Data {
         try decryptFn(ciphertext)
+    }
+}
+
+// MARK: - Private helpers
+
+extension ChallengeHandler {
+    /// Send a key-invalidated error to the Mac so it can fail the auth immediately
+    /// rather than waiting for the 15-second timeout.
+    ///
+    /// Wire format: [version=1][type=5(error)] + JSON payload
+    /// Matches the daemon's ErrorMessage type.
+    private func sendKeyInvalidatedError(
+        challengeID: String,
+        deviceID: String,
+        session: SessionCryptoWrapper
+    ) {
+        // Build the error payload. The daemon's ErrorMessage struct expects:
+        //   { "code": 1001, "description": "key_invalidated", "challengeID": "..." }
+        // We encrypt it with the session key so it matches the security model.
+        struct ErrorPayload: Codable {
+            let code: UInt16
+            let description: String
+            let challengeID: String?
+        }
+
+        guard let payloadData = try? JSONEncoder().encode(
+            ErrorPayload(code: 1001, description: "key_invalidated", challengeID: challengeID)
+        ) else {
+            logger.error("Failed to encode key-invalidated error payload")
+            return
+        }
+
+        // Wire format: [protocolVersion=1][messageType=5(error)] + encrypted payload
+        guard let encryptedPayload = try? session.encrypt(plaintext: payloadData) else {
+            logger.error("Failed to encrypt key-invalidated error payload")
+            return
+        }
+
+        var wireData = Data([1, 5]) // version=1, type=error(5)
+        wireData.append(encryptedPayload)
+
+        _ = sendResponse?(wireData)
+        logger.info("Sent key-invalidated error to Mac for challenge \(challengeID)")
     }
 }
 

@@ -5,6 +5,8 @@ import Security
 public enum SecureEnclaveError: Error, Sendable {
     case keyGenerationFailed(String)
     case signingFailed(String)
+    /// Signing key was invalidated because biometric enrollment changed since pairing.
+    case keyInvalidated
     case publicKeyExportFailed(String)
     case keyNotFound
     case deletionFailed(OSStatus)
@@ -97,7 +99,23 @@ public final class SecureEnclaveManager: SigningProvider, @unchecked Sendable {
             data as CFData,
             &error
         ) as Data? else {
-            let desc = error?.takeRetainedValue().localizedDescription ?? "unknown"
+            let cfError = error?.takeRetainedValue()
+            let desc = cfError?.localizedDescription ?? "unknown"
+
+            // Detect biometric enrollment change: iOS revokes access to .biometryCurrentSet
+            // keys when Face ID / Touch ID enrollment changes. The error domain is typically
+            // NSOSStatusErrorDomain with code -25293 (errSecAuthFailed), and the description
+            // contains "biometry" or "ACL". We check both to be robust across iOS versions.
+            let code = cfError.map { CFErrorGetCode($0) } ?? 0
+            let descLower = desc.lowercased()
+            let isBiometryInvalidation = code == -25293
+                || descLower.contains("biometry")
+                || descLower.contains("invalidat")
+                || descLower.contains("acl")
+            if isBiometryInvalidation {
+                throw SecureEnclaveError.keyInvalidated
+            }
+
             throw SecureEnclaveError.signingFailed(desc)
         }
 
